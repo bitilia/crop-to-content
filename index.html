@@ -106,6 +106,20 @@ canvas {
     margin-top: 4px;
 }
 
+.size-info {
+    color: #aaa;
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.size-info .smaller {
+    color: #7be36b;
+}
+
+.size-info .bigger {
+    color: #ff8f6b;
+}
+
 button {
     padding: 10px 20px;
     font-size: 16px;
@@ -159,6 +173,19 @@ button:disabled {
 </div>
 
 <div class="controls">
+    <label class="slider-label">
+        Max Size (px):
+        <input type="range" id="resizeSlider" min="1" max="1" value="1" disabled>
+        <span id="resizeValue">-</span>
+    </label>
+    <label class="slider-label">
+        Quality:
+        <input type="range" id="qualitySlider" min="1" max="100" value="100" disabled>
+        <span id="qualityValue">100%</span>
+    </label>
+</div>
+
+<div class="controls">
     <button id="cropBtn" disabled>Crop</button>
     <label class="slider-label" for="filename">File name:</label>
     <input type="text" id="filename" placeholder="cropped" disabled>
@@ -178,6 +205,7 @@ button:disabled {
     <h3>Cropped</h3>
     <canvas id="output"></canvas>
     <div class="dimensions" id="outputDims"></div>
+    <div class="size-info" id="sizeInfo"></div>
 </div>
 
 <script>
@@ -195,9 +223,18 @@ button:disabled {
     const outputDims = document.getElementById("outputDims");
     const filenameInput = document.getElementById("filename");
     const filenameExt = document.getElementById("filenameExt");
+    const resizeSlider = document.getElementById("resizeSlider");
+    const resizeValue = document.getElementById("resizeValue");
+    const qualitySlider = document.getElementById("qualitySlider");
+    const qualityValue = document.getElementById("qualityValue");
+    const sizeInfo = document.getElementById("sizeInfo");
 
     const srcCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
     const outCtx = outputCanvas.getContext("2d");
+
+    // Offscreen canvas holding the full-resolution crop, before the resize slider scales it down.
+    const cropSourceCanvas = document.createElement("canvas");
+    const cropSourceCtx = cropSourceCanvas.getContext("2d");
 
     // Canvas can only reliably re-encode to these formats; anything else falls back to PNG.
     const SUPPORTED_EXPORT_TYPES = {
@@ -208,8 +245,9 @@ button:disabled {
 
     let loaded = false;
     let objectUrl = null;
-    let exportMimeType = "image/png";
-    let exportExt = "png";
+    let exportBaseMimeType = "image/png";
+    let originalFileSize = 0;
+    let sizeUpdateTimer = null;
 
     function setStatus(message, isError = false) {
         statusEl.textContent = message;
@@ -219,12 +257,100 @@ button:disabled {
     function resetOutput() {
         outputCanvas.width = 0;
         outputCanvas.height = 0;
+        cropSourceCanvas.width = 0;
+        cropSourceCanvas.height = 0;
         outputDims.textContent = "";
+        sizeInfo.textContent = "";
         downloadBtn.disabled = true;
+        resizeSlider.disabled = true;
+        qualitySlider.disabled = true;
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    // Quality only has an effect on lossy formats. A PNG source switches to WebP
+    // once quality is turned down, since PNG itself has no lossy quality setting.
+    function getExportFormat() {
+        const quality = Number(qualitySlider.value) / 100;
+        let mimeType = exportBaseMimeType;
+
+        if (mimeType === "image/png" && quality < 1) {
+            mimeType = "image/webp";
+        }
+
+        const ext = SUPPORTED_EXPORT_TYPES[mimeType] || "png";
+        return { mimeType, ext, quality };
+    }
+
+    function renderOutput() {
+        if (cropSourceCanvas.width === 0) return;
+
+        const maxDim = Math.max(cropSourceCanvas.width, cropSourceCanvas.height);
+        const targetMax = Number(resizeSlider.value);
+        const scale = Math.min(1, targetMax / maxDim);
+        const outWidth = Math.max(1, Math.round(cropSourceCanvas.width * scale));
+        const outHeight = Math.max(1, Math.round(cropSourceCanvas.height * scale));
+
+        outputCanvas.width = outWidth;
+        outputCanvas.height = outHeight;
+        outCtx.clearRect(0, 0, outWidth, outHeight);
+        outCtx.drawImage(
+            cropSourceCanvas,
+            0, 0, cropSourceCanvas.width, cropSourceCanvas.height,
+            0, 0, outWidth, outHeight
+        );
+
+        outputDims.textContent = `${outWidth} x ${outHeight}px`;
+        downloadBtn.disabled = false;
+
+        scheduleSizeUpdate();
+    }
+
+    function scheduleSizeUpdate() {
+        clearTimeout(sizeUpdateTimer);
+        sizeUpdateTimer = setTimeout(updateSizeComparison, 150);
+    }
+
+    function updateSizeComparison() {
+        if (outputCanvas.width === 0) return;
+
+        const { mimeType, ext, quality } = getExportFormat();
+        filenameExt.textContent = `.${ext}`;
+
+        outputCanvas.toBlob(blob => {
+            if (!blob) {
+                sizeInfo.textContent = "";
+                return;
+            }
+
+            let comparison = "";
+            if (originalFileSize > 0) {
+                const pct = Math.round((blob.size / originalFileSize) * 100);
+                const cls = blob.size < originalFileSize ? "smaller" : "bigger";
+                comparison = ` (<span class="${cls}">${pct}% of original</span>)`;
+            }
+
+            sizeInfo.innerHTML =
+                `Original: ${formatSize(originalFileSize)} &rarr; Output: ${formatSize(blob.size)}${comparison}`;
+        }, mimeType, mimeType === "image/png" ? undefined : quality);
     }
 
     thresholdSlider.oninput = () => {
         thresholdValue.textContent = thresholdSlider.value;
+    };
+
+    resizeSlider.oninput = () => {
+        resizeValue.textContent = resizeSlider.value;
+        renderOutput();
+    };
+
+    qualitySlider.oninput = () => {
+        qualityValue.textContent = `${qualitySlider.value}%`;
+        scheduleSizeUpdate();
     };
 
     function loadFile(file) {
@@ -253,13 +379,16 @@ button:disabled {
             resetOutput();
             setStatus("");
 
-            exportExt = SUPPORTED_EXPORT_TYPES[file.type] || "png";
-            exportMimeType = SUPPORTED_EXPORT_TYPES[file.type] ? file.type : "image/png";
+            originalFileSize = file.size;
+            exportBaseMimeType = SUPPORTED_EXPORT_TYPES[file.type] ? file.type : "image/png";
 
             const baseName = file.name.replace(/\.[^./\\]+$/, "") || "image";
             filenameInput.value = `${baseName}_cropped`;
             filenameInput.disabled = false;
-            filenameExt.textContent = `.${exportExt}`;
+            filenameExt.textContent = `.${SUPPORTED_EXPORT_TYPES[exportBaseMimeType]}`;
+
+            qualitySlider.value = 100;
+            qualityValue.textContent = "100%";
         };
 
         img.onerror = () => {
@@ -338,18 +467,24 @@ button:disabled {
         const cropWidth = maxX - minX + 1;
         const cropHeight = maxY - minY + 1;
 
-        outputCanvas.width = cropWidth;
-        outputCanvas.height = cropHeight;
-
-        outCtx.clearRect(0, 0, cropWidth, cropHeight);
-        outCtx.drawImage(
+        cropSourceCanvas.width = cropWidth;
+        cropSourceCanvas.height = cropHeight;
+        cropSourceCtx.clearRect(0, 0, cropWidth, cropHeight);
+        cropSourceCtx.drawImage(
             sourceCanvas,
             minX, minY, cropWidth, cropHeight,
             0, 0, cropWidth, cropHeight
         );
 
-        outputDims.textContent = `${cropWidth} x ${cropHeight}px`;
-        downloadBtn.disabled = false;
+        const maxDim = Math.max(cropWidth, cropHeight);
+        resizeSlider.min = Math.min(50, maxDim);
+        resizeSlider.max = maxDim;
+        resizeSlider.value = maxDim;
+        resizeSlider.disabled = false;
+        resizeValue.textContent = maxDim;
+        qualitySlider.disabled = false;
+
+        renderOutput();
 
         if (minX === 0 && minY === 0 && maxX === width - 1 && maxY === height - 1) {
             setStatus("No transparent borders found — image was already tight.");
@@ -361,6 +496,7 @@ button:disabled {
     downloadBtn.onclick = () => {
         if (outputCanvas.width === 0) return;
 
+        const { mimeType, ext, quality } = getExportFormat();
         const typedName = filenameInput.value.trim().replace(/[\\/:*?"<>|]/g, "");
         const baseName = typedName || "cropped";
 
@@ -371,11 +507,11 @@ button:disabled {
             }
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.download = `${baseName}.${exportExt}`;
+            a.download = `${baseName}.${ext}`;
             a.href = url;
             a.click();
             URL.revokeObjectURL(url);
-        }, exportMimeType);
+        }, mimeType, mimeType === "image/png" ? undefined : quality);
     };
 })();
 </script>
