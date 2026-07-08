@@ -66,6 +66,20 @@ input[type=range] {
     width: 250px;
 }
 
+input[type=text]#filename {
+    padding: 6px 10px;
+    font-size: 14px;
+    border: 1px solid #666;
+    border-radius: 4px;
+    background: #333;
+    color: white;
+}
+
+#filenameExt {
+    color: #aaa;
+    font-size: 14px;
+}
+
 .canvas-wrap {
     display: inline-block;
     vertical-align: top;
@@ -146,6 +160,9 @@ button:disabled {
 
 <div class="controls">
     <button id="cropBtn" disabled>Crop</button>
+    <label class="slider-label" for="filename">File name:</label>
+    <input type="text" id="filename" placeholder="cropped" disabled>
+    <span id="filenameExt"></span>
     <button id="downloadBtn" disabled>Download</button>
 </div>
 
@@ -176,12 +193,23 @@ button:disabled {
     const statusEl = document.getElementById("status");
     const sourceDims = document.getElementById("sourceDims");
     const outputDims = document.getElementById("outputDims");
+    const filenameInput = document.getElementById("filename");
+    const filenameExt = document.getElementById("filenameExt");
 
     const srcCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
     const outCtx = outputCanvas.getContext("2d");
 
+    // Canvas can only reliably re-encode to these formats; anything else falls back to PNG.
+    const SUPPORTED_EXPORT_TYPES = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp"
+    };
+
     let loaded = false;
     let objectUrl = null;
+    let exportMimeType = "image/png";
+    let exportExt = "png";
 
     function setStatus(message, isError = false) {
         statusEl.textContent = message;
@@ -224,6 +252,14 @@ button:disabled {
             cropBtn.disabled = false;
             resetOutput();
             setStatus("");
+
+            exportExt = SUPPORTED_EXPORT_TYPES[file.type] || "png";
+            exportMimeType = SUPPORTED_EXPORT_TYPES[file.type] ? file.type : "image/png";
+
+            const baseName = file.name.replace(/\.[^./\\]+$/, "") || "image";
+            filenameInput.value = `${baseName}_cropped`;
+            filenameInput.disabled = false;
+            filenameExt.textContent = `.${exportExt}`;
         };
 
         img.onerror = () => {
@@ -325,6 +361,9 @@ button:disabled {
     downloadBtn.onclick = () => {
         if (outputCanvas.width === 0) return;
 
+        const typedName = filenameInput.value.trim().replace(/[\\/:*?"<>|]/g, "");
+        const baseName = typedName || "cropped";
+
         outputCanvas.toBlob(blob => {
             if (!blob) {
                 setStatus("Could not export the cropped image.", true);
@@ -332,11 +371,11 @@ button:disabled {
             }
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.download = "cropped.png";
+            a.download = `${baseName}.${exportExt}`;
             a.href = url;
             a.click();
             URL.revokeObjectURL(url);
-        }, "image/png");
+        }, exportMimeType);
     };
 })();
 </script>
