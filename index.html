@@ -105,6 +105,12 @@ h2 {
     transition: opacity 0.2s;
 }
 
+.step-help {
+    color: #aaa;
+    font-size: 13px;
+    margin: 4px 0 0;
+}
+
 .step.disabled .step-body {
     opacity: 0.35;
     pointer-events: none;
@@ -271,14 +277,10 @@ canvas {
         <label class="step-header">
             <input type="checkbox" id="compressEnabled">
             <span class="step-number">3</span>
-            <span class="step-title">Compress</span>
+            <span class="step-title">Compress (Lossless)</span>
         </label>
         <div class="step-body">
-            <label class="slider-label">
-                Quality
-                <input type="range" id="qualitySlider" min="1" max="100" value="80" disabled>
-                <span id="qualityValue">80%</span>
-            </label>
+            <p class="step-help">Re-encodes the image as losslessly-compressed PNG — pixels are preserved exactly, no quality is lost.</p>
         </div>
     </section>
 
@@ -341,8 +343,6 @@ canvas {
 
     const stepCompress = document.getElementById("stepCompress");
     const compressEnabled = document.getElementById("compressEnabled");
-    const qualitySlider = document.getElementById("qualitySlider");
-    const qualityValue = document.getElementById("qualityValue");
 
     const srcCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
     const outCtx = outputCanvas.getContext("2d");
@@ -511,21 +511,15 @@ canvas {
         scheduleSizeUpdate();
     }
 
-    // Step 3: compress (or export losslessly in the original format).
+    // Step 3: compress losslessly as PNG, or export in the original format untouched.
+    // Canvas offers no adjustable "quality" for lossless encoding, so this is a
+    // plain on/off choice rather than a slider.
     function getExportFormat() {
-        if (!compressEnabled.checked) {
-            return { mimeType: exportBaseMimeType, ext: SUPPORTED_EXPORT_TYPES[exportBaseMimeType], quality: 1 };
+        if (compressEnabled.checked) {
+            return { mimeType: "image/png", ext: "png", quality: 1 };
         }
 
-        const quality = Number(qualitySlider.value) / 100;
-        let mimeType = exportBaseMimeType;
-
-        if (mimeType === "image/png" && quality < 1) {
-            mimeType = "image/webp";
-        }
-
-        const ext = SUPPORTED_EXPORT_TYPES[mimeType] || "png";
-        return { mimeType, ext, quality };
+        return { mimeType: exportBaseMimeType, ext: SUPPORTED_EXPORT_TYPES[exportBaseMimeType], quality: 1 };
     }
 
     function scheduleSizeUpdate() {
@@ -579,11 +573,6 @@ canvas {
 
     compressEnabled.onchange = () => {
         setStepEnabled(stepCompress, compressEnabled, compressEnabled.checked);
-        scheduleSizeUpdate();
-    };
-
-    qualitySlider.oninput = () => {
-        qualityValue.textContent = `${qualitySlider.value}%`;
         scheduleSizeUpdate();
     };
 
