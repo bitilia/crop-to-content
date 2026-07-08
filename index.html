@@ -280,7 +280,7 @@ canvas {
             <span class="step-title">Compress (Lossless)</span>
         </label>
         <div class="step-body">
-            <p class="step-help">Tries several lossless encodings (indexed-palette PNG, WebP, plain PNG) and keeps whichever produces the smallest file. Pixels are always preserved exactly.</p>
+            <p class="step-help">Converts to WebP and compresses it losslessly — pixels are preserved exactly.</p>
         </div>
     </section>
 
@@ -367,180 +367,8 @@ canvas {
     let sizeUpdateTimer = null;
     let pipelineToken = 0;
 
-    // ---- Indexed-palette PNG encoder ----
-    // The browser's built-in canvas PNG encoder always writes 32-bit truecolor,
-    // which can be much larger than the source for flat-color/graphic images
-    // (icons, logos) that are normally saved as an 8-bit (or smaller) palette PNG.
-    // This builds a real indexed PNG by hand — palette + packed bit-depth pixels
-    // through the browser's native zlib deflate — so those images compress properly
-    // instead of ballooning after crop/resize.
-
-    const CRC_TABLE = (() => {
-        const table = new Uint32Array(256);
-        for (let n = 0; n < 256; n++) {
-            let c = n;
-            for (let k = 0; k < 8; k++) {
-                c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-            }
-            table[n] = c >>> 0;
-        }
-        return table;
-    })();
-
-    function crc32(bytes) {
-        let c = 0xFFFFFFFF;
-        for (let i = 0; i < bytes.length; i++) {
-            c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
-        }
-        return (c ^ 0xFFFFFFFF) >>> 0;
-    }
-
-    function u32(n) {
-        return new Uint8Array([(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]);
-    }
-
-    function concatBytes(arrays) {
-        let total = 0;
-        for (const a of arrays) total += a.length;
-        const out = new Uint8Array(total);
-        let offset = 0;
-        for (const a of arrays) {
-            out.set(a, offset);
-            offset += a.length;
-        }
-        return out;
-    }
-
-    function pngChunk(type, data) {
-        const typeBytes = new TextEncoder().encode(type);
-        const body = concatBytes([typeBytes, data]);
-        return concatBytes([u32(data.length), typeBytes, data, u32(crc32(body))]);
-    }
-
-    async function deflateZlib(bytes) {
-        const stream = new CompressionStream("deflate");
-        const writer = stream.writable.getWriter();
-        writer.write(bytes);
-        writer.close();
-
-        const chunks = [];
-        const reader = stream.readable.getReader();
-        for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-        }
-        return concatBytes(chunks);
-    }
-
-    const MAX_INDEXED_PIXELS = 6_000_000;
-
-    // Returns a Blob for an indexed PNG, or null if the image has too many
-    // distinct colors (>256) to be represented with a palette.
-    async function encodeIndexedPng(imageData) {
-        if (typeof CompressionStream === "undefined") return null;
-
-        const { width, height, data } = imageData;
-        if (width * height > MAX_INDEXED_PIXELS) return null;
-
-        const colorToIndex = new Map();
-        const palette = [];
-        const indices = new Uint8Array(width * height);
-
-        for (let i = 0; i < width * height; i++) {
-            const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2], a = data[i * 4 + 3];
-            const key = (r << 24) | (g << 16) | (b << 8) | a;
-            let index = colorToIndex.get(key);
-            if (index === undefined) {
-                if (palette.length >= 256) return null;
-                index = palette.length;
-                palette.push([r, g, b, a]);
-                colorToIndex.set(key, index);
-            }
-            indices[i] = index;
-        }
-
-        const bitDepth = palette.length <= 2 ? 1 : palette.length <= 4 ? 2 : palette.length <= 16 ? 4 : 8;
-        const bytesPerRow = Math.ceil(width * bitDepth / 8);
-        const raw = new Uint8Array((bytesPerRow + 1) * height);
-
-        let pos = 0;
-        for (let y = 0; y < height; y++) {
-            raw[pos++] = 0; // filter: None
-            if (bitDepth === 8) {
-                for (let x = 0; x < width; x++) raw[pos++] = indices[y * width + x];
-            } else {
-                let bitBuf = 0, bitCount = 0;
-                for (let x = 0; x < width; x++) {
-                    bitBuf = (bitBuf << bitDepth) | indices[y * width + x];
-                    bitCount += bitDepth;
-                    while (bitCount >= 8) {
-                        raw[pos++] = (bitBuf >> (bitCount - 8)) & 0xFF;
-                        bitCount -= 8;
-                    }
-                }
-                if (bitCount > 0) {
-                    raw[pos++] = (bitBuf << (8 - bitCount)) & 0xFF;
-                }
-            }
-        }
-
-        const compressed = await deflateZlib(raw);
-
-        const ihdr = concatBytes([u32(width), u32(height), new Uint8Array([bitDepth, 3, 0, 0, 0])]);
-
-        const plte = new Uint8Array(palette.length * 3);
-        for (let i = 0; i < palette.length; i++) {
-            plte[i * 3] = palette[i][0];
-            plte[i * 3 + 1] = palette[i][1];
-            plte[i * 3 + 2] = palette[i][2];
-        }
-
-        const hasAlpha = palette.some(p => p[3] !== 255);
-        const chunks = [
-            new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
-            pngChunk("IHDR", ihdr),
-            pngChunk("PLTE", plte)
-        ];
-
-        if (hasAlpha) {
-            const trns = new Uint8Array(palette.length);
-            for (let i = 0; i < palette.length; i++) trns[i] = palette[i][3];
-            chunks.push(pngChunk("tRNS", trns));
-        }
-
-        chunks.push(pngChunk("IDAT", compressed));
-        chunks.push(pngChunk("IEND", new Uint8Array(0)));
-
-        return new Blob([concatBytes(chunks)], { type: "image/png" });
-    }
-
     function canvasToBlob(canvas, mimeType, quality) {
         return new Promise(resolve => canvas.toBlob(resolve, mimeType, quality));
-    }
-
-    // Tries every lossless candidate encoding and returns whichever is smallest,
-    // so enabling Compress can never produce a bigger file than not compressing.
-    async function pickSmallestLosslessBlob(canvas) {
-        const candidates = [];
-
-        const nativePng = await canvasToBlob(canvas, "image/png");
-        if (nativePng) candidates.push({ blob: nativePng, ext: "png" });
-
-        const webp = await canvasToBlob(canvas, "image/webp", 1);
-        if (webp) candidates.push({ blob: webp, ext: "webp" });
-
-        try {
-            const ctx = canvas.getContext("2d");
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const indexedPng = await encodeIndexedPng(imageData);
-            if (indexedPng) candidates.push({ blob: indexedPng, ext: "png" });
-        } catch (err) {
-            // Ignore — fall back to the native candidates above.
-        }
-
-        if (candidates.length === 0) return null;
-        return candidates.reduce((best, c) => (c.blob.size < best.blob.size ? c : best));
     }
 
     function setStatus(message, isError = false) {
@@ -688,11 +516,12 @@ canvas {
         scheduleSizeUpdate();
     }
 
-    // Step 3: compress losslessly, picking the smallest of several lossless
-    // encodings, or export in the original format untouched.
+    // Step 3: convert to WebP and compress it losslessly (quality 1.0 is
+    // bit-exact), or export in the original format untouched.
     async function getExportResult() {
         if (compressEnabled.checked) {
-            return pickSmallestLosslessBlob(outputCanvas);
+            const blob = await canvasToBlob(outputCanvas, "image/webp", 1);
+            return { blob, ext: "webp" };
         }
 
         const blob = await canvasToBlob(outputCanvas, exportBaseMimeType, 1);
