@@ -27,15 +27,6 @@ h2 {
     font-size: 14px;
 }
 
-.controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-    margin: 20px 0;
-}
-
 .dropzone {
     border: 2px dashed #666;
     border-radius: 8px;
@@ -56,18 +47,91 @@ h2 {
     display: none;
 }
 
-label.slider-label {
+.pipeline {
+    max-width: 560px;
+    margin: 25px auto;
+    text-align: left;
+}
+
+.step {
+    border: 1px solid #444;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    background: #2a2a2a;
+    overflow: hidden;
+}
+
+.step-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.step-header.static {
+    cursor: default;
+}
+
+.step-header input[type=checkbox] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #4da3ff;
+    color: #111;
+    font-size: 13px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.step-title {
+    font-weight: bold;
+    font-size: 15px;
+}
+
+.step-body {
+    padding: 4px 16px 16px 48px;
+    transition: opacity 0.2s;
+}
+
+.step.disabled .step-body {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.slider-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 input[type=range] {
-    width: 250px;
+    width: 220px;
+    flex: 1;
+    min-width: 140px;
+}
+
+.filename-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 input[type=text]#filename {
-    padding: 6px 10px;
+    flex: 1;
+    padding: 8px 10px;
     font-size: 14px;
     border: 1px solid #666;
     border-radius: 4px;
@@ -78,38 +142,14 @@ input[type=text]#filename {
 #filenameExt {
     color: #aaa;
     font-size: 14px;
-}
-
-.canvas-wrap {
-    display: inline-block;
-    vertical-align: top;
-    margin: 15px;
-}
-
-canvas {
-    display: block;
-    border: 1px solid #666;
-    max-width: 100%;
-    height: auto;
-    background:
-        linear-gradient(45deg,#bbb 25%,transparent 25%),
-        linear-gradient(-45deg,#bbb 25%,transparent 25%),
-        linear-gradient(45deg,transparent 75%,#bbb 75%),
-        linear-gradient(-45deg,transparent 75%,#bbb 75%);
-    background-size:20px 20px;
-    background-position:0 0,0 10px,10px -10px,-10px 0;
-}
-
-.dimensions {
-    color: #aaa;
-    font-size: 13px;
-    margin-top: 4px;
+    white-space: nowrap;
 }
 
 .size-info {
     color: #aaa;
     font-size: 13px;
-    margin-top: 4px;
+    margin: 10px 0;
+    min-height: 18px;
 }
 
 .size-info .smaller {
@@ -123,7 +163,6 @@ canvas {
 button {
     padding: 10px 20px;
     font-size: 16px;
-    margin: 10px;
     cursor: pointer;
     border: none;
     border-radius: 6px;
@@ -152,60 +191,128 @@ button:disabled {
 .status.error {
     color: #ff6b6b;
 }
+
+.preview {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.canvas-wrap {
+    display: inline-block;
+    vertical-align: top;
+    margin: 15px;
+}
+
+canvas {
+    display: block;
+    border: 1px solid #666;
+    max-width: 100%;
+    height: auto;
+    background:
+        linear-gradient(45deg,#bbb 25%,transparent 25%),
+        linear-gradient(-45deg,#bbb 25%,transparent 25%),
+        linear-gradient(45deg,transparent 75%,#bbb 75%),
+        linear-gradient(-45deg,transparent 75%,#bbb 75%);
+    background-size:20px 20px;
+    background-position:0 0,0 10px,10px -10px,-10px 0;
+}
+
+.dimensions {
+    color: #aaa;
+    font-size: 13px;
+    margin-top: 4px;
+}
 </style>
 </head>
 <body>
 
 <h2>Crop Transparent Borders</h2>
-<p class="subtitle">Trim transparent padding from the edges of an image, right in your browser.</p>
+<p class="subtitle">Trim transparent padding, resize, and compress an image, right in your browser.</p>
 
 <div class="dropzone" id="dropzone">
     <p>Drag &amp; drop an image here, or click to choose a file</p>
     <input type="file" id="file" accept="image/*">
 </div>
 
-<div class="controls">
-    <label class="slider-label">
-        Alpha Threshold:
-        <input type="range" id="threshold" min="0" max="255" value="1">
-        <span id="value">1</span>
-    </label>
-</div>
+<div class="pipeline">
 
-<div class="controls">
-    <label class="slider-label">
-        Max Size (px):
-        <input type="range" id="resizeSlider" min="1" max="1" value="1" disabled>
-        <span id="resizeValue">-</span>
-    </label>
-    <label class="slider-label">
-        Quality:
-        <input type="range" id="qualitySlider" min="1" max="100" value="100" disabled>
-        <span id="qualityValue">100%</span>
-    </label>
-</div>
+    <section class="step" id="stepCrop">
+        <label class="step-header">
+            <input type="checkbox" id="cropEnabled" checked>
+            <span class="step-number">1</span>
+            <span class="step-title">Crop Transparent Borders</span>
+        </label>
+        <div class="step-body">
+            <label class="slider-label">
+                Alpha Threshold
+                <input type="range" id="threshold" min="0" max="255" value="1">
+                <span id="thresholdValue">1</span>
+            </label>
+        </div>
+    </section>
 
-<div class="controls">
-    <button id="cropBtn" disabled>Crop</button>
-    <label class="slider-label" for="filename">File name:</label>
-    <input type="text" id="filename" placeholder="cropped" disabled>
-    <span id="filenameExt"></span>
-    <button id="downloadBtn" disabled>Download</button>
+    <section class="step disabled" id="stepResize">
+        <label class="step-header">
+            <input type="checkbox" id="resizeEnabled">
+            <span class="step-number">2</span>
+            <span class="step-title">Resize</span>
+        </label>
+        <div class="step-body">
+            <label class="slider-label">
+                Max Size (px)
+                <input type="range" id="resizeSlider" min="1" max="1" value="1" disabled>
+                <span id="resizeValue">-</span>
+            </label>
+        </div>
+    </section>
+
+    <section class="step disabled" id="stepCompress">
+        <label class="step-header">
+            <input type="checkbox" id="compressEnabled">
+            <span class="step-number">3</span>
+            <span class="step-title">Compress</span>
+        </label>
+        <div class="step-body">
+            <label class="slider-label">
+                Quality
+                <input type="range" id="qualitySlider" min="1" max="100" value="80" disabled>
+                <span id="qualityValue">80%</span>
+            </label>
+        </div>
+    </section>
+
+    <section class="step" id="stepOutput">
+        <div class="step-header static">
+            <span class="step-number">4</span>
+            <span class="step-title">Output</span>
+        </div>
+        <div class="step-body">
+            <div class="filename-row">
+                <input type="text" id="filename" placeholder="cropped" disabled>
+                <span id="filenameExt"></span>
+            </div>
+            <div class="size-info" id="sizeInfo"></div>
+            <button id="downloadBtn" disabled>Download</button>
+        </div>
+    </section>
+
 </div>
 
 <p class="status" id="status"></p>
 
-<div class="canvas-wrap">
-    <h3>Original</h3>
-    <canvas id="source"></canvas>
-    <div class="dimensions" id="sourceDims"></div>
-</div>
+<div class="preview">
+    <div class="canvas-wrap">
+        <h3>Original</h3>
+        <canvas id="source"></canvas>
+        <div class="dimensions" id="sourceDims"></div>
+    </div>
 
-<div class="canvas-wrap">
-    <h3>Cropped</h3>
-    <canvas id="output"></canvas>
-    <div class="dimensions" id="outputDims"></div>
-    <div class="size-info" id="sizeInfo"></div>
+    <div class="canvas-wrap">
+        <h3>Result</h3>
+        <canvas id="output"></canvas>
+        <div class="dimensions" id="outputDims"></div>
+    </div>
 </div>
 
 <script>
@@ -214,27 +321,36 @@ button:disabled {
     const dropzone = document.getElementById("dropzone");
     const sourceCanvas = document.getElementById("source");
     const outputCanvas = document.getElementById("output");
-    const cropBtn = document.getElementById("cropBtn");
-    const downloadBtn = document.getElementById("downloadBtn");
-    const thresholdSlider = document.getElementById("threshold");
-    const thresholdValue = document.getElementById("value");
     const statusEl = document.getElementById("status");
     const sourceDims = document.getElementById("sourceDims");
     const outputDims = document.getElementById("outputDims");
     const filenameInput = document.getElementById("filename");
     const filenameExt = document.getElementById("filenameExt");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const sizeInfo = document.getElementById("sizeInfo");
+
+    const stepCrop = document.getElementById("stepCrop");
+    const cropEnabled = document.getElementById("cropEnabled");
+    const thresholdSlider = document.getElementById("threshold");
+    const thresholdValue = document.getElementById("thresholdValue");
+
+    const stepResize = document.getElementById("stepResize");
+    const resizeEnabled = document.getElementById("resizeEnabled");
     const resizeSlider = document.getElementById("resizeSlider");
     const resizeValue = document.getElementById("resizeValue");
+
+    const stepCompress = document.getElementById("stepCompress");
+    const compressEnabled = document.getElementById("compressEnabled");
     const qualitySlider = document.getElementById("qualitySlider");
     const qualityValue = document.getElementById("qualityValue");
-    const sizeInfo = document.getElementById("sizeInfo");
 
     const srcCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
     const outCtx = outputCanvas.getContext("2d");
 
-    // Offscreen canvas holding the full-resolution crop, before the resize slider scales it down.
-    const cropSourceCanvas = document.createElement("canvas");
-    const cropSourceCtx = cropSourceCanvas.getContext("2d");
+    // Offscreen canvas holding the result of the crop step (or the full image,
+    // if cropping is disabled), before the resize step scales it down.
+    const cropStageCanvas = document.createElement("canvas");
+    const cropStageCtx = cropStageCanvas.getContext("2d");
 
     // Canvas can only reliably re-encode to these formats; anything else falls back to PNG.
     const SUPPORTED_EXPORT_TYPES = {
@@ -247,6 +363,7 @@ button:disabled {
     let objectUrl = null;
     let exportBaseMimeType = "image/png";
     let originalFileSize = 0;
+    let cropUpdateTimer = null;
     let sizeUpdateTimer = null;
 
     function setStatus(message, isError = false) {
@@ -254,16 +371,11 @@ button:disabled {
         statusEl.classList.toggle("error", isError);
     }
 
-    function resetOutput() {
-        outputCanvas.width = 0;
-        outputCanvas.height = 0;
-        cropSourceCanvas.width = 0;
-        cropSourceCanvas.height = 0;
-        outputDims.textContent = "";
-        sizeInfo.textContent = "";
-        downloadBtn.disabled = true;
-        resizeSlider.disabled = true;
-        qualitySlider.disabled = true;
+    function setStepEnabled(stepEl, toggleInput, enabled) {
+        stepEl.classList.toggle("disabled", !enabled);
+        for (const input of stepEl.querySelectorAll(".step-body input")) {
+            input.disabled = !enabled;
+        }
     }
 
     function formatSize(bytes) {
@@ -272,162 +384,35 @@ button:disabled {
         return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
     }
 
-    // Quality only has an effect on lossy formats. A PNG source switches to WebP
-    // once quality is turned down, since PNG itself has no lossy quality setting.
-    function getExportFormat() {
-        const quality = Number(qualitySlider.value) / 100;
-        let mimeType = exportBaseMimeType;
-
-        if (mimeType === "image/png" && quality < 1) {
-            mimeType = "image/webp";
-        }
-
-        const ext = SUPPORTED_EXPORT_TYPES[mimeType] || "png";
-        return { mimeType, ext, quality };
+    function resetOutput() {
+        outputCanvas.width = 0;
+        outputCanvas.height = 0;
+        cropStageCanvas.width = 0;
+        cropStageCanvas.height = 0;
+        outputDims.textContent = "";
+        sizeInfo.textContent = "";
+        downloadBtn.disabled = true;
     }
 
-    function renderOutput() {
-        if (cropSourceCanvas.width === 0) return;
+    // Step 1: crop transparent borders (or pass the full image through untouched).
+    function runCropStage() {
+        if (!loaded) return;
 
-        const maxDim = Math.max(cropSourceCanvas.width, cropSourceCanvas.height);
-        const targetMax = Number(resizeSlider.value);
-        const scale = Math.min(1, targetMax / maxDim);
-        const outWidth = Math.max(1, Math.round(cropSourceCanvas.width * scale));
-        const outHeight = Math.max(1, Math.round(cropSourceCanvas.height * scale));
+        const width = sourceCanvas.width;
+        const height = sourceCanvas.height;
 
-        outputCanvas.width = outWidth;
-        outputCanvas.height = outHeight;
-        outCtx.clearRect(0, 0, outWidth, outHeight);
-        outCtx.drawImage(
-            cropSourceCanvas,
-            0, 0, cropSourceCanvas.width, cropSourceCanvas.height,
-            0, 0, outWidth, outHeight
-        );
-
-        outputDims.textContent = `${outWidth} x ${outHeight}px`;
-        downloadBtn.disabled = false;
-
-        scheduleSizeUpdate();
-    }
-
-    function scheduleSizeUpdate() {
-        clearTimeout(sizeUpdateTimer);
-        sizeUpdateTimer = setTimeout(updateSizeComparison, 150);
-    }
-
-    function updateSizeComparison() {
-        if (outputCanvas.width === 0) return;
-
-        const { mimeType, ext, quality } = getExportFormat();
-        filenameExt.textContent = `.${ext}`;
-
-        outputCanvas.toBlob(blob => {
-            if (!blob) {
-                sizeInfo.textContent = "";
-                return;
-            }
-
-            let comparison = "";
-            if (originalFileSize > 0) {
-                const pct = Math.round((blob.size / originalFileSize) * 100);
-                const cls = blob.size < originalFileSize ? "smaller" : "bigger";
-                comparison = ` (<span class="${cls}">${pct}% of original</span>)`;
-            }
-
-            sizeInfo.innerHTML =
-                `Original: ${formatSize(originalFileSize)} &rarr; Output: ${formatSize(blob.size)}${comparison}`;
-        }, mimeType, mimeType === "image/png" ? undefined : quality);
-    }
-
-    thresholdSlider.oninput = () => {
-        thresholdValue.textContent = thresholdSlider.value;
-    };
-
-    resizeSlider.oninput = () => {
-        resizeValue.textContent = resizeSlider.value;
-        renderOutput();
-    };
-
-    qualitySlider.oninput = () => {
-        qualityValue.textContent = `${qualitySlider.value}%`;
-        scheduleSizeUpdate();
-    };
-
-    function loadFile(file) {
-        if (!file) return;
-
-        if (!file.type.startsWith("image/")) {
-            setStatus("Please choose a valid image file.", true);
+        if (!cropEnabled.checked) {
+            cropStageCanvas.width = width;
+            cropStageCanvas.height = height;
+            cropStageCtx.clearRect(0, 0, width, height);
+            cropStageCtx.drawImage(sourceCanvas, 0, 0);
+            setStatus("");
+            resetResizeBounds(width, height);
+            renderFinal();
             return;
         }
 
-        if (objectUrl) {
-            URL.revokeObjectURL(objectUrl);
-        }
-
-        const img = new Image();
-        objectUrl = URL.createObjectURL(file);
-
-        img.onload = () => {
-            sourceCanvas.width = img.width;
-            sourceCanvas.height = img.height;
-            srcCtx.clearRect(0, 0, img.width, img.height);
-            srcCtx.drawImage(img, 0, 0);
-            sourceDims.textContent = `${img.width} x ${img.height}px`;
-            loaded = true;
-            cropBtn.disabled = false;
-            resetOutput();
-            setStatus("");
-
-            originalFileSize = file.size;
-            exportBaseMimeType = SUPPORTED_EXPORT_TYPES[file.type] ? file.type : "image/png";
-
-            const baseName = file.name.replace(/\.[^./\\]+$/, "") || "image";
-            filenameInput.value = `${baseName}_cropped`;
-            filenameInput.disabled = false;
-            filenameExt.textContent = `.${SUPPORTED_EXPORT_TYPES[exportBaseMimeType]}`;
-
-            qualitySlider.value = 100;
-            qualityValue.textContent = "100%";
-        };
-
-        img.onerror = () => {
-            setStatus("Could not load that image. It may be corrupt or an unsupported format.", true);
-            loaded = false;
-            cropBtn.disabled = true;
-        };
-
-        img.src = objectUrl;
-    }
-
-    fileInput.onchange = e => {
-        loadFile(e.target.files[0]);
-    };
-
-    dropzone.onclick = () => fileInput.click();
-
-    dropzone.ondragover = e => {
-        e.preventDefault();
-        dropzone.classList.add("dragover");
-    };
-
-    dropzone.ondragleave = () => {
-        dropzone.classList.remove("dragover");
-    };
-
-    dropzone.ondrop = e => {
-        e.preventDefault();
-        dropzone.classList.remove("dragover");
-        const file = e.dataTransfer.files[0];
-        if (file) loadFile(file);
-    };
-
-    cropBtn.onclick = () => {
-        if (!loaded) return;
-
         const threshold = Number(thresholdSlider.value);
-        const width = sourceCanvas.width;
-        const height = sourceCanvas.height;
 
         let pixels;
         try {
@@ -467,30 +452,204 @@ button:disabled {
         const cropWidth = maxX - minX + 1;
         const cropHeight = maxY - minY + 1;
 
-        cropSourceCanvas.width = cropWidth;
-        cropSourceCanvas.height = cropHeight;
-        cropSourceCtx.clearRect(0, 0, cropWidth, cropHeight);
-        cropSourceCtx.drawImage(
+        cropStageCanvas.width = cropWidth;
+        cropStageCanvas.height = cropHeight;
+        cropStageCtx.clearRect(0, 0, cropWidth, cropHeight);
+        cropStageCtx.drawImage(
             sourceCanvas,
             minX, minY, cropWidth, cropHeight,
             0, 0, cropWidth, cropHeight
         );
-
-        const maxDim = Math.max(cropWidth, cropHeight);
-        resizeSlider.min = Math.min(50, maxDim);
-        resizeSlider.max = maxDim;
-        resizeSlider.value = maxDim;
-        resizeSlider.disabled = false;
-        resizeValue.textContent = maxDim;
-        qualitySlider.disabled = false;
-
-        renderOutput();
 
         if (minX === 0 && minY === 0 && maxX === width - 1 && maxY === height - 1) {
             setStatus("No transparent borders found — image was already tight.");
         } else {
             setStatus("Cropped successfully.");
         }
+
+        resetResizeBounds(cropWidth, cropHeight);
+        renderFinal();
+    }
+
+    function scheduleCropUpdate() {
+        clearTimeout(cropUpdateTimer);
+        cropUpdateTimer = setTimeout(runCropStage, 120);
+    }
+
+    // Resets the resize slider's range to match the current pre-resize size,
+    // defaulting to "no scale" whenever the upstream (crop) stage changes.
+    function resetResizeBounds(width, height) {
+        const maxDim = Math.max(width, height);
+        resizeSlider.min = Math.min(50, maxDim);
+        resizeSlider.max = maxDim;
+        resizeSlider.value = maxDim;
+        resizeValue.textContent = maxDim;
+    }
+
+    // Step 2: resize (or pass the crop-stage image through at native size).
+    function renderFinal() {
+        if (cropStageCanvas.width === 0) return;
+
+        const maxDim = Math.max(cropStageCanvas.width, cropStageCanvas.height);
+        const targetMax = resizeEnabled.checked ? Number(resizeSlider.value) : maxDim;
+        const scale = Math.min(1, targetMax / maxDim);
+        const outWidth = Math.max(1, Math.round(cropStageCanvas.width * scale));
+        const outHeight = Math.max(1, Math.round(cropStageCanvas.height * scale));
+
+        outputCanvas.width = outWidth;
+        outputCanvas.height = outHeight;
+        outCtx.clearRect(0, 0, outWidth, outHeight);
+        outCtx.drawImage(
+            cropStageCanvas,
+            0, 0, cropStageCanvas.width, cropStageCanvas.height,
+            0, 0, outWidth, outHeight
+        );
+
+        outputDims.textContent = `${outWidth} x ${outHeight}px`;
+        downloadBtn.disabled = false;
+
+        scheduleSizeUpdate();
+    }
+
+    // Step 3: compress (or export losslessly in the original format).
+    function getExportFormat() {
+        if (!compressEnabled.checked) {
+            return { mimeType: exportBaseMimeType, ext: SUPPORTED_EXPORT_TYPES[exportBaseMimeType], quality: 1 };
+        }
+
+        const quality = Number(qualitySlider.value) / 100;
+        let mimeType = exportBaseMimeType;
+
+        if (mimeType === "image/png" && quality < 1) {
+            mimeType = "image/webp";
+        }
+
+        const ext = SUPPORTED_EXPORT_TYPES[mimeType] || "png";
+        return { mimeType, ext, quality };
+    }
+
+    function scheduleSizeUpdate() {
+        clearTimeout(sizeUpdateTimer);
+        sizeUpdateTimer = setTimeout(updateSizeComparison, 150);
+    }
+
+    function updateSizeComparison() {
+        if (outputCanvas.width === 0) return;
+
+        const { mimeType, ext, quality } = getExportFormat();
+        filenameExt.textContent = `.${ext}`;
+
+        outputCanvas.toBlob(blob => {
+            if (!blob) {
+                sizeInfo.textContent = "";
+                return;
+            }
+
+            let comparison = "";
+            if (originalFileSize > 0) {
+                const pct = Math.round((blob.size / originalFileSize) * 100);
+                const cls = blob.size < originalFileSize ? "smaller" : "bigger";
+                comparison = ` (<span class="${cls}">${pct}% of original</span>)`;
+            }
+
+            sizeInfo.innerHTML =
+                `Original: ${formatSize(originalFileSize)} &rarr; Output: ${formatSize(blob.size)}${comparison}`;
+        }, mimeType, mimeType === "image/png" ? undefined : quality);
+    }
+
+    cropEnabled.onchange = () => {
+        setStepEnabled(stepCrop, cropEnabled, cropEnabled.checked);
+        runCropStage();
+    };
+
+    thresholdSlider.oninput = () => {
+        thresholdValue.textContent = thresholdSlider.value;
+        scheduleCropUpdate();
+    };
+
+    resizeEnabled.onchange = () => {
+        setStepEnabled(stepResize, resizeEnabled, resizeEnabled.checked);
+        renderFinal();
+    };
+
+    resizeSlider.oninput = () => {
+        resizeValue.textContent = resizeSlider.value;
+        renderFinal();
+    };
+
+    compressEnabled.onchange = () => {
+        setStepEnabled(stepCompress, compressEnabled, compressEnabled.checked);
+        scheduleSizeUpdate();
+    };
+
+    qualitySlider.oninput = () => {
+        qualityValue.textContent = `${qualitySlider.value}%`;
+        scheduleSizeUpdate();
+    };
+
+    function loadFile(file) {
+        if (!file) return;
+
+        if (!file.type.startsWith("image/")) {
+            setStatus("Please choose a valid image file.", true);
+            return;
+        }
+
+        if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+        }
+
+        const img = new Image();
+        objectUrl = URL.createObjectURL(file);
+
+        img.onload = () => {
+            sourceCanvas.width = img.width;
+            sourceCanvas.height = img.height;
+            srcCtx.clearRect(0, 0, img.width, img.height);
+            srcCtx.drawImage(img, 0, 0);
+            sourceDims.textContent = `${img.width} x ${img.height}px`;
+            loaded = true;
+            resetOutput();
+
+            originalFileSize = file.size;
+            exportBaseMimeType = SUPPORTED_EXPORT_TYPES[file.type] ? file.type : "image/png";
+
+            const baseName = file.name.replace(/\.[^./\\]+$/, "") || "image";
+            filenameInput.value = `${baseName}_cropped`;
+            filenameInput.disabled = false;
+            filenameExt.textContent = `.${SUPPORTED_EXPORT_TYPES[exportBaseMimeType]}`;
+
+            runCropStage();
+        };
+
+        img.onerror = () => {
+            setStatus("Could not load that image. It may be corrupt or an unsupported format.", true);
+            loaded = false;
+        };
+
+        img.src = objectUrl;
+    }
+
+    fileInput.onchange = e => {
+        loadFile(e.target.files[0]);
+    };
+
+    dropzone.onclick = () => fileInput.click();
+
+    dropzone.ondragover = e => {
+        e.preventDefault();
+        dropzone.classList.add("dragover");
+    };
+
+    dropzone.ondragleave = () => {
+        dropzone.classList.remove("dragover");
+    };
+
+    dropzone.ondrop = e => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        const file = e.dataTransfer.files[0];
+        if (file) loadFile(file);
     };
 
     downloadBtn.onclick = () => {
@@ -502,7 +661,7 @@ button:disabled {
 
         outputCanvas.toBlob(blob => {
             if (!blob) {
-                setStatus("Could not export the cropped image.", true);
+                setStatus("Could not export the image.", true);
                 return;
             }
             const url = URL.createObjectURL(blob);
