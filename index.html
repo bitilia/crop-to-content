@@ -234,7 +234,7 @@ canvas {
 <body>
 
 <h2>Crop Transparent Borders</h2>
-<p class="subtitle">Trim transparent padding, resize, and compress an image, right in your browser.</p>
+<p class="subtitle">Trim transparent padding and resize an image, right in your browser.</p>
 
 <div class="dropzone" id="dropzone">
     <p>Drag &amp; drop an image here, or click to choose a file</p>
@@ -273,20 +273,9 @@ canvas {
         </div>
     </section>
 
-    <section class="step disabled" id="stepCompress">
-        <label class="step-header">
-            <input type="checkbox" id="compressEnabled">
-            <span class="step-number">3</span>
-            <span class="step-title">Compress (Lossless)</span>
-        </label>
-        <div class="step-body">
-            <p class="step-help">Converts to WebP and compresses it losslessly — pixels are preserved exactly.</p>
-        </div>
-    </section>
-
     <section class="step" id="stepOutput">
         <div class="step-header static">
-            <span class="step-number">4</span>
+            <span class="step-number">3</span>
             <span class="step-title">Output</span>
         </div>
         <div class="step-body">
@@ -340,9 +329,6 @@ canvas {
     const resizeEnabled = document.getElementById("resizeEnabled");
     const resizeSlider = document.getElementById("resizeSlider");
     const resizeValue = document.getElementById("resizeValue");
-
-    const stepCompress = document.getElementById("stepCompress");
-    const compressEnabled = document.getElementById("compressEnabled");
 
     const srcCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
     const outCtx = outputCanvas.getContext("2d");
@@ -516,14 +502,8 @@ canvas {
         scheduleSizeUpdate();
     }
 
-    // Step 3: convert to WebP and compress it losslessly (quality 1.0 is
-    // bit-exact), or export in the original format untouched.
+    // Export in the original source format, losslessly where the format allows it.
     async function getExportResult() {
-        if (compressEnabled.checked) {
-            const blob = await canvasToBlob(outputCanvas, "image/webp", 1);
-            return { blob, ext: "webp" };
-        }
-
         const blob = await canvasToBlob(outputCanvas, exportBaseMimeType, 1);
         return { blob, ext: SUPPORTED_EXPORT_TYPES[exportBaseMimeType] };
     }
@@ -576,11 +556,6 @@ canvas {
     resizeSlider.oninput = () => {
         resizeValue.textContent = resizeSlider.value;
         renderFinal();
-    };
-
-    compressEnabled.onchange = () => {
-        setStepEnabled(stepCompress, compressEnabled, compressEnabled.checked);
-        scheduleSizeUpdate();
     };
 
     function loadFile(file) {
