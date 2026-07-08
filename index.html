@@ -280,7 +280,7 @@ canvas {
             <span class="step-title">Compress (Lossless)</span>
         </label>
         <div class="step-body">
-            <p class="step-help">Re-encodes the image as losslessly-compressed PNG — pixels are preserved exactly, no quality is lost.</p>
+            <p class="step-help">Re-encodes the image as lossless WebP — pixels are preserved exactly, but the file is typically much smaller than PNG.</p>
         </div>
     </section>
 
@@ -511,12 +511,13 @@ canvas {
         scheduleSizeUpdate();
     }
 
-    // Step 3: compress losslessly as PNG, or export in the original format untouched.
-    // Canvas offers no adjustable "quality" for lossless encoding, so this is a
-    // plain on/off choice rather than a slider.
+    // Step 3: compress losslessly as WebP, or export in the original format untouched.
+    // Passing quality 1.0 to the WebP encoder is lossless (verified: encoding random
+    // noise and decoding it back produces a pixel-for-pixel match) and typically
+    // produces a meaningfully smaller file than PNG's DEFLATE-based compression.
     function getExportFormat() {
         if (compressEnabled.checked) {
-            return { mimeType: "image/png", ext: "png", quality: 1 };
+            return { mimeType: "image/webp", ext: "webp", quality: 1 };
         }
 
         return { mimeType: exportBaseMimeType, ext: SUPPORTED_EXPORT_TYPES[exportBaseMimeType], quality: 1 };
